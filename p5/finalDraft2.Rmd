@@ -1,0 +1,727 @@
+---
+title: "Exploring White Wine Quality"
+author: "by Daniel J. Lee"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+library(ggplot2)
+library(gridExtra)
+library(plyr)
+library(dplyr)
+library(RColorBrewer)
+library(GGally)
+library(corrplot)
+```
+
+### 1. Introduction
+
+In this project, we are going to explore the properties of white wine and its relation to its quality. The text file is located [here](https://s3.amazonaws.com/udacity-hosted-downloads/ud651/wineQualityInfo.txt) with more information regarding the physicochemical variables.
+
+### 2. Dataset Exploration
+
+First, we will load the dataset into R and examine its features.
+
+```{r echo=FALSE}
+df = read.csv('wineQualityWhites.csv')
+str(df)
+summary(df)
+```
+
+<li> There are 4898 observations consisted of 1 unique identifier, 11 input variables, and 1 ouput variable. </li>
+<li> No wine obtained a perfect score of 10. </li>
+<li> `free.sulfur.dioxide` and `total.sulfur.dioxide` are discrete whereas all other input variables are continuous.
+<li> All variables except quality seemed to show <b>positive-skewed distribution</b> based on mean and median. </li>
+
+### 3. Univariate Plots
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data = df, aes(quality)) + geom_bar() +
+  xlab('Quality') +
+  ylab('Count') +
+  ggtitle('Wine Quality Distribution')
+```
+
+<li> It seems that `quality` is normally distributed with most occuring values at 6. </li>
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# exploring input
+grid.arrange(
+  qplot(df$fixed.acidity),
+  qplot(df$volatile.acidity),
+  qplot(df$citric.acid),
+  qplot(df$residual.sugar),
+  qplot(df$chlorides),
+  qplot(df$free.sulfur.dioxide),
+  qplot(df$total.sulfur.dioxide),
+  qplot(df$density),
+  qplot(df$pH),
+  qplot(df$sulphates),
+  qplot(df$alcohol),
+  ncol = 4
+  )
+```
+
+<li> It is shown that majority of our input variables contain outliers and needs attention. </li>
+
+
+### 4. Univariate Analysis
+
+<br>
+
+#### 4a. Chemical Properties
+
+It seems that most of our input variables such as `chlorides` and `residual.sugar` contains outliers. I decided to rescale the axis and determine whether the distribution is normal or skewed. Some observation on the distribution of the chemical property can be made:
+
+<li> <b>Normal</b>: pH </li>
+<li> <b>Normal + Outliers</b>: total.sulfur.dioxide, citric.acid, fixed.acidity, density </li>
+<li> <b>Positive-Skewed </b>: alcohol, sulphates
+<li> <b>Positive-Skewed + Outliers </b>: residual.sugar, free.sulfur.dioxide, chlorides, volatile.acidity
+
+<br>
+
+#### 4b. Feature Transformation
+
+```{r}
+get_ori_plot <- function(var, label) {
+  ggplot(aes(x = (var)), data = df) + xlab(label) +
+  geom_histogram(colour = "black",
+                 fill = '#dbdd46',
+                 bins = 30)
+}
+
+get_sqrt_plot <- function(var, label) {
+  ggplot(aes(x = sqrt(var)), data = df) +  xlab(label) +
+  geom_histogram(colour = "black",
+                 fill = '#dbdd46',
+                 bins = 30)
+}
+
+get_log_plot <- function(var, label) {
+  ggplot(aes(x = log10(var)), data = df) + xlab(label) +
+  geom_histogram(colour = "black",
+                 fill = '#dbdd46',
+                 bins = 30)
+}
+```
+
+I decided to take the transformation for the positive-skewed features to determine whether it would display normal distribution afterwards. An example is shown below:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# example - transform sulphates
+p1 <- get_ori_plot(df$sulphates, "Original(Sulphates)")
+p2 <- get_sqrt_plot(df$sulphates, "Sqrt(Sulphates))")
+p3 <- get_log_plot(df$sulphates, "Log10(Sulphates))")
+grid.arrange(p1, p2, p3, ncol = 1)
+```
+
+<li> It is shown that taking the logarithmic transformation with base 10 for `sulphates` displayed preferred normal distribution and created a new variable for that transformation. </li>
+
+<br>
+
+#### 4c. `rating`
+
+It was shown that `quality` was normally distributed with 6 as the most frequent rating. I decided to create a catagorical variable `grade` for future analysis with various features. In this project, we consider a rating of 3 - 4: `Bad`, 5 - 7: `Average`, and 8 - 9 : `Good`.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+df$rating <-
+  cut(df$quality, c(0, 4, 7, 9), 
+      labels = c('Bad', 'Average', 'Good'))
+
+levels(df$rating) <- list(Bad = 3:4,
+                          Average = 5:7,
+                          Good = 8:9)
+table(df$rating)
+
+ggplot(data=df, aes(rating)) + 
+  geom_bar() +
+  ggtitle('Distribution of Wine Ratings') +
+  xlab('Rating') + ylab('Count')
+```
+
+<li> It is shown that we have roughly the same amount of `Bad` and `Good` wines. </li>
+
+<br>
+
+#### 4d. `free.to.bound`
+
+After examining the structure of our dataset, I decided to examine the relations between variables. I decided to take a first look at our discrete input features: `free.sulfur.dioxide` and `total.sulfur.dioxide`. It was shown that `total.sulfur.dioxide` was composed of `free.sulfur.dioxide` and `bound.sulfur.dioxide`. The ratio seemed more appropriate than using `free.sulfur.dioxide` to `total.sulfur.dioxide`.
+
+```{r}
+df$bound.sulfur.dioxide <-
+  df$total.sulfur.dioxide - df$free.sulfur.dioxide
+df$free.to.bound <- df$free.sulfur.dioxide / df$bound.sulfur.dioxide
+```
+
+<br>
+
+#### Univariate Conclusion:
+
+We got a quick overview on the distribution of each feature in our dataset. Our main interest `quality` was normally distributed with the most occuring value at `6`. It was also shown that all input features were continuous but the `sulfur.dioxide` features. Since some of our features were positive-skewed, we created methods for transforming our feature to a more appropriate and normally distributed feature. After researching `total.sulfur.dioxide`, we created a new feature: the ratio of `free.sulfur.dioxide` to `bound.sulfur.dioxide` to analyze in the further sections. We also saw that majority of our features had outliers and would affect our future plots. Thus rather removing the outliers, we decided to rescale future plots to come.
+
+<br>
+
+### 5. Bivariate Analysis
+
+<br>
+
+#### 5a. Correlation
+
+I decided to examine the relation between output and the input variables through the <b>peason-r coefficient</b>.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+m <- cor(df[,c(2:13,15,16)])
+corrplot(m,method="square",type="lower")
+
+df_correlation = cor(df[, c(2:13,15, 16)], df$quality)
+df_correlation
+abs(df_correlation) > 0.2
+```
+
+From the correlation matrix, we can see a relative correlation between..
+<li> `alcohol` and `density`</li>
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cor(df$alcohol, df$density)
+```
+<li> `density` and `residual.sugar` </li>
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cor(df$density, df$residual.sugar)
+```
+<li> `total.sulfur.dioxide` and `density` </li>
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cor(df$total.sulfur.dioxide, df$density)
+```
+
+<br>
+
+#### 5b. `quality` Correlation
+
+I wanted to focus on 5 features that are highly correlated with `quality`:
+
+<li> <b>alcohol</b> </li>
+<li> <b>volatile.acidity</b> </li>
+<li> <b>chlorides</b> </li>
+<li> <b>density</b> </li>
+<li> <b>bound.sulfur.dioxide</b> </li>
+
+<br>
+
+### 6. Bivariate Plots
+
+Before plotting, I wanted to examine the transformation among the variables of interest:
+
+#### 6a. Transforming `bound.sulfur.dioxide`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <-
+  get_ori_plot(df$bound.sulfur.dioxide, "Original(Bound Sulfur Dioxide)")
+p2 <-
+  get_sqrt_plot(df$bound.sulfur.dioxide, "Sqrt(Bound Sulfur Dioxide)")
+p3 <-
+  get_log_plot(df$bound.sulfur.dioxide, "Log10(Bound Sulfur Dioxides)")
+grid.arrange(p1,p2,p3,ncol=1)
+```
+
+<li> It is shown that square root of `bound.sulfur.dioxide` displayed a normal distribution. </li>
+
+<br>
+
+#### 6b. Transforming `alcohol`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- get_ori_plot(df$alcohol, "Original(Alcohol)")
+p2 <- get_sqrt_plot(df$bound.sulfur.dioxide, "Sqrt(Alcohol)")
+p3 <- get_log_plot(df$bound.sulfur.dioxide, "Log10(Alcohol)")
+grid.arrange(p1,p2,p3,ncol=1)
+```
+
+<li> It is shown that square root of `alcohol` displayed a normal distribution. </li>
+
+<br>
+
+#### 6c. Transforming `chlorides`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- get_ori_plot(df$chlorides, "Original(Chlorides)")
+p2 <- get_sqrt_plot(df$chlorides, "Sqrt(Chlorides)")
+p3 <- get_log_plot(df$chlorides, "Log10(Chlorides)")
+grid.arrange(p1,p2,p3,ncol=1)
+```
+
+<li> It is shown that original plot of `chlorides` displayed a better normal distribution. </li>
+
+<br>
+
+#### 6d. Transforming `volatile.acidity`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- get_ori_plot(df$volatile.acidity, "Original(Volatile Acidity)")
+p2 <- get_sqrt_plot(df$volatile.acidity, "Sqrt(Volatile Acidity)")
+p3 <- get_log_plot(df$volatile.acidity, "Log10(Volatile Acidity)")
+grid.arrange(p1,p2,p3,ncol=1)
+```
+
+<li> It is shown that logarithm of `volatile.acidity` displayed a normal distribution. </li>
+
+<br>
+
+Since our main focus was on discrete variable `quality`, I decided to use boxplots to explore the correlated features:
+
+```{r, include=FALSE}
+colors = c("#E34C48",
+           "#F78F1E",
+           "#99B898",
+           "#FECEAB",
+           "#E5B90F",
+           "#7EC163",
+           "#295FAC")
+
+df$grade = factor(df$quality)
+```
+
+```{r}
+# Function to make boxplots
+make_boxplot <- function(xvar, yvar, title, xlabel, ylabel) {
+  ggplot(df, aes(x = xvar, y = yvar, fill = xvar)) +
+  geom_jitter(alpha = .3)  +
+  geom_boxplot(alpha = 0.5, color = 'blue') +
+  stat_summary(fun.y = "mean", 
+               geom = "point", 
+               color = "red", 
+               shape = 8, 
+               size = 4) +
+  scale_fill_manual(values = colors) +
+  theme(legend.position = "none") +
+  ggtitle(title) + theme(plot.title = element_text(hjust = 0.5))
+} + xlab(xlabel) + ylab(ylabel)
+```
+
+#### 1. Alcohol
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <-
+  make_boxplot(df$grade,
+  sqrt(df$alcohol),
+  'a. Alcohol vs. Quality',
+  'Quality',
+  'Alcohol (%)')
+
+p2 <-
+  make_boxplot(df$rating,
+  sqrt(df$alcohol),
+  'b. Alcohol vs. Rating',
+  'Rating',
+  'Alcohol (%)')
+
+grid.arrange(p1,p2,ncol=1)
+```
+<li> We can see that alcohol % is shown to increase with quality. </li>
+
+<br>
+
+#### 2. Volatile Acidity
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+p1 <-
+  make_boxplot(
+  df$grade,
+  log10(df$volatile.acidity),
+  'a. Volatile Acidity vs. Quality',
+  'Quality',
+  'Volatile Acidity (g/L)'
+  )
+
+p2 <-
+  make_boxplot(
+  df$rating,
+  log10(df$volatile.acidity),
+  'b. Volatile Acidity vs. Rating',
+  'Rating',
+  'Volatile Acidity (g/L)'
+  )
+
+grid.arrange(p1,p2,ncol=1)
+```
+<li> We can see that `alcohol` % is shown to increase with quality and rating. </li>
+
+<br>
+
+#### 3. Chlorides
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <-
+  make_boxplot(df$grade,
+  df$chlorides,
+  'a. Chlorides vs. Quality',
+  'Quality',
+  'Chlorides (g/L)') +
+  scale_y_continuous(limits = c(0, 0.075))
+
+p2 <-
+  make_boxplot(df$rating,
+  df$chlorides,
+  'b. Chlorides vs. Rating',
+  'Rating',
+  'Chlorides (g/L)') +
+  scale_y_continuous(limits = c(0, 0.075))
+
+grid.arrange(p1,p2,ncol=1)
+```
+<li> We can see that `chlorides` is shown to decrease with quality and rating. </li>
+
+<br>
+
+
+#### 4. Density
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <-
+  make_boxplot(df$grade,
+               df$density,
+               'a. Density vs. Quality',
+               'Quality',
+               'Density (g/mL)') +
+  scale_y_continuous(limits = c(0.985, 1.005))
+
+p2 <-
+  make_boxplot(df$rating,
+               df$density,
+               'b. Density vs. Rating',
+               'Rating',
+               'Density (g/mL)') +
+  scale_y_continuous(limits = c(0.985, 1.005))
+
+grid.arrange(p1,p2,ncol=1)
+```
+
+<li> We can see that `density` is shown to decrease with quality and rating. </li>
+
+<br>
+
+#### 5. Bound Sulfur Dioxide
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <-
+  make_boxplot(
+    df$grade,
+    sqrt(df$bound.sulfur.dioxide),
+    'a. Bound Sulfur Dioxide vs. Quality',
+    'Quality',
+    'Bound Sulfur Dioxide (mg/L)'
+    )
+
+p2 <-
+  make_boxplot(
+    df$rating,
+    sqrt(df$bound.sulfur.dioxide),
+    'b. Bound Sulfur Dioxide vs. Rating',
+    'Rating',
+    'Bound Sulfur Dioxide (mg/L)'
+    )
+
+grid.arrange(p1,p2,ncol=1)
+```
+<li> We can see that `bound.sulfur.dioxide` is shown to decrease with quality and rating. </li>
+
+<br>
+
+
+Based on our boxplots, it seems that..
+
+<li> increasing `alcohol` </li>
+<li> decreasing `volatile.acidity` </li>
+<li> decreasing `chlorides` </li>
+<li> decreasing `density` </li>
+<li> decreasing `bound.sulfur.dioxide` </li>
+
+<br>
+
+.. was shown in <b>higher</b> `quality` wines.
+
+<br>
+
+#### (Addition: Examining `free.to.bound`)
+
+I also decided to explore the relation of `free.sulfur.dioxide` to `bound.sulfur.dioxide`:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <-
+  make_boxplot(
+    df$grade,
+    df$free.to.bound,
+    'a. Free/Bound Sulfur Dioxide vs. Quality',
+    'Quality',
+    'Free/Bound Sulfur Dioxide') +
+  scale_y_continuous(limits = c(0, 0.75))
+
+p2 <-
+  make_boxplot(
+    df$rating,
+    df$free.to.bound,
+    'b. Free/Bound Sulfur Dioxide vs. Rating',
+    'Rating',
+    'Free/Bound Sulfur Dioxide') +
+  scale_y_continuous(limits = c(0, 0.75))
+
+grid.arrange(p1, p2, ncol = 1)
+  
+```
+<li> It is shown that ratio of  `free.sulfur.dioxide` to `bound.sulfur.dioxide` is preferred in higher quality wines. </li>
+
+<br>
+
+#### Bivariate Conclusion:
+
+Initially, we created a correlation matrix to determine which features were relative. We saw that the overall strongest correlation is 0.839 between  `density` and `residual.sugar`. Though our main interest was to determine the features that were correlated with `quality`. The strongest relation with `quality` was `alcohol` with 0.436. After determining our main features, we catagorized the `quality` into `rating`: `Bad` (3-4), `Average` (5-7), `Good` (8-9) and generated the boxplots to examine the difference among quality. We saw that increasing `alcohol` but lowering `volatile acidity`, `chlorides`, `density`, and `bound.sulfur.dioxide` was shown in higher quality wines.
+
+
+### 7. Multivariate Analysis
+
+In order to examine various features, I decided to create a correlation matrix based on the features that were highly correlated with `quality` and examine those features among each other.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+main_vars <-
+  names(df) %in% c("alcohol",
+                   "volatile.acidity",
+                   "chlorides",
+                   'density',
+                   'bound.sulfur.dioxide')
+newdata <- df[main_vars]
+corr = abs(cor(newdata))
+print(corr > 0.3 & corr != 1.0)
+```
+
+### 8. Multivariate Plots
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+table(df$rating)
+```
+
+Since `Average` was accounting for 4535 observations, I decided to focus primarily on the `Good` and `Bad` wines.
+
+#### 7a. `free.sulfur.dioxide` vs. `bound.sulfur.dioxide`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+filter_df = filter(df, df$rating != "Average")
+
+p1 <- ggplot(df, aes(free.sulfur.dioxide, bound.sulfur.dioxide)) +
+  geom_jitter(shape = 21, size = 1.5, alpha = 0.33) +
+  facet_wrap(~ rating) +
+  geom_smooth(method = "lm", se = FALSE,size=1, color = 'purple') +
+  scale_x_continuous(limits = c(0, 100)) +
+  scale_y_continuous(limits = c(0, 250))
+
+p2 <-
+  ggplot(filter_df,
+         aes(free.sulfur.dioxide,
+             bound.sulfur.dioxide,
+             colour = rating,
+             fill = rating)) +
+  geom_point(shape = 21,
+  size = 1.5,
+  alpha = 0.55) +
+  geom_smooth(method = "lm", se = FALSE, size=1) +
+  scale_x_continuous(limits = c(0, 100)) +
+  scale_y_continuous(limits = c(0, 250))
+  
+grid.arrange(p1,p2,ncol=1)
+```
+
+<li> Initially, I wanted to explore the features composing of `total.sulfur.dioxide`. It seems that `free.sulfur.dioxide` is preferred to be between 25-50 mg/liter while `bound.sulfur.dioxide` is preferred to be between 50-100 mg/liter for higher quality wines. It is also shown that higher quality wines have a trend of increasing `free.sulfur.dioxide`. </li>
+
+<br>
+
+#### 7b. `density` vs. `bound.sulfur.dioxide`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+p1 <- ggplot(df, aes(density, chlorides)) +
+  geom_point(shape = 21,
+             size = 1.5,
+             alpha = 0.33) +
+  facet_wrap( ~ rating) +
+  geom_smooth(method = "lm", se = FALSE,size=1, color = 'purple') +
+  scale_x_continuous(limits = c(0.987, 1.003)) +
+  scale_y_continuous(limits = c(0, 0.1))
+
+p2 <-
+  ggplot(filter_df, aes(density,
+                        chlorides,
+                        colour = rating, 
+                        fill = rating)) +
+  geom_point(shape = 21,
+             size = 1.5,
+             alpha = 0.33) +
+  geom_smooth(method = "lm", se = FALSE,size=1) +
+  scale_x_continuous(limits = c(0.988, 1.003)) +
+  scale_y_continuous(limits = c(0, 0.1))
+
+grid.arrange(p1,p2,ncol=1)
+```
+
+<li> Based on just `Bad` and `Good` quality wines, it seems that `Good` wines display a higher concentrated range than `Bad` wines. We can confirm that decreased `density` and `bound.sulfur.dioxide` tends to be in better wine. </li>
+
+<br>
+
+#### 7c. `alcohol` vs. `chlorides`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- ggplot(df, aes(alcohol, chlorides)) +
+  geom_point(shape = 21, size = 1.5, alpha=0.33) +
+  facet_wrap( ~ rating) + 
+  geom_smooth(method = "lm", se = FALSE,size=1, color = 'purple')
+
+p2 <- ggplot(filter_df, aes(alcohol,
+                            chlorides,
+                            colour = rating, 
+                            fill = rating)) +
+  geom_point(shape = 21,
+             size = 1.5,
+             alpha = 0.75,aes(fill = rating)) +
+  geom_smooth(method = "lm", se = FALSE,size=1) +
+  scale_y_continuous(limits = c(0, 0.12))
+
+grid.arrange(p1,p2,ncol=1)
+```
+
+<li> We can also confirm that `Good` wines tends to be more concentrated than `Bad` wines. The plots show that higher `alcohol` and lower `chlorides` result in higher quality wines. </li>
+
+
+### 7d. Linear Model
+
+The selected features used in the linear model were based on its correlation with `quality`:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+m1<-lm(quality ~ volatile.acidity, data=df)
+  m2<-update(m1,~. + alcohol)
+  m3<-update(m2,~. + chlorides)
+  m4<-update(m3,~. + bound.sulfur.dioxide)
+  m5<-update(m4,~. + density)
+m5
+```
+
+We can see that the equation for `quality` is heavily depended on the `density` of the wine although `alcohol` was considered the highest correlated variable. I am speculating that it is because `density` is also relatively correlated with other features as well such as `bound.sulfur.dioxide` and `chlorides`.
+
+```{r}
+cor(df[,c(2:13,16)], df$density)
+```
+
+<br>
+
+#### Multivariate Conclusion:
+
+We saw that the `rating` for `Average` contained 4535 observations. We focused particularly on `Good` and `Bad` wines which is roughly around 180 observations each. For this analysis, we are examining the relation among the features that are correlated with `quality` themselves. The most interesting observation we determined was that `Good` wine tended to show a relatively higher concentration compared to `Bad` wine. We were also able to confirm the boxplot trends seen in our bivariate analysis as well using scatterplots. With the linear model, we saw that `density` had the most influence in determining `quality`.
+
+<br>
+
+## Final Plots and Summary
+
+<br>
+
+#### * Plot One: Correlation Matrix
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+m <- cor(df[,c(2:13,15,16)])
+corrplot(m,method="square",type="lower")
+```
+
+<br>
+
+#### Description One
+
+The correlation matrix allowed us to observe which features are relatively important that is in keen with our main interest `quality`. It allowed us to explore other variables in the multivariate analysis that weren't just correlated with `quality` itself. We were able to see that the most correlated feature with the `quality` was `alcohol` followed by `density`.
+
+<br>
+
+#### * Plot Two: `alcohol` vs. `quality`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <-
+  make_boxplot(df$grade,
+  sqrt(df$alcohol),
+  'a. Alcohol vs. Quality',
+  'Quality',
+  'Alcohol (%)')
+
+p2 <-
+  make_boxplot(df$rating,
+  sqrt(df$alcohol),
+  'b. Alcohol vs. Rating',
+  'Rating',
+  'Alcohol (%)')
+
+grid.arrange(p1,p2,ncol=1)
+```
+
+<br>
+
+#### Description Two
+
+We saw that `alcohol` had the highest correlation of 0.4355 with `quality`. Increasing alcohol % by volume was displayed in wines scored higher.
+
+<br>
+
+
+#### * Plot Three: `alcohol` vs. `chlorides`
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- ggplot(df, aes(alcohol, chlorides)) +
+  geom_point(shape = 21, size = 1.5, alpha=0.33) +
+  facet_wrap( ~ rating) + 
+  geom_smooth(method = "lm", se = FALSE,size=1, color = 'purple')
+
+p2 <- ggplot(filter_df, aes(alcohol,
+                            chlorides,
+                            colour = rating, 
+                            fill = rating)) +
+  geom_point(shape = 21,
+             size = 1.5,
+             alpha = 0.75,aes(fill = rating)) +
+  geom_smooth(method = "lm", se = FALSE,size=1) +
+  scale_y_continuous(limits = c(0, 0.12))
+
+grid.arrange(p1,p2,ncol=1)
+```
+
+<br>
+
+#### Description Three
+
+In our multivariate analysis, we saw that `Good` wine tended to show a better concentrated range than `Bad` wines such as the plot above. We were also able to confirm that higher `alcohol` and lower `chlorides` tend to be preferred in `Good` wines which was also observed from our bivariate analysis.
+
+
+## Reflection
+
+The white wine dataset contained 4898 observations with 11 chemical properties. After exploring the dataset, we were able to successfully determine the main factors that affected wine quality which were through..
+
+<li> increasing `alcohol` </li>
+<li> decreasing `volatile.acidity` </li>
+<li> decreasing `chlorides` </li>
+<li> decreasing `density` </li>
+<li> decreasing `bound.sulfur.dioxide` </li>
+
+<br>
+
+However, `quality` is subjective and we cannot solely base quality from physiochemical properties. There are other properties not mentioned in the dataset that could play a bigger factor in the quality. Through our various plots, we were able to get an outlook on how a wine is rated based solely on physiochemical properties.
+
+Throughout the project, we saw that there are many outliers that affected the initial distribution of the data and that not all were normally distributed. Thus rescaling and transformation was necessary in future plots. In this project, we were able to transform it appropriately to determine the best fit for our plots.
+
+If possible, more `Bad` and `Good` wine data would allow us to have a better understanding on the wine's `quality`.
+
+<br>
+
+#### * Reference
+
+http://www.biostathandbook.com/transformation.html <br>
+http://waterhouse.ucdavis.edu/whats-in-wine/fixed-acidity <br>
+http://www.morethanorganic.com/sulphur-in-the-bottle <br>
+http://www.sthda.com/english/wiki/ggplot2-colors-how-to-change-colors-automatically-and-manually <br>
+https://stackoverflow.com/questions/12328056/how-do-i-delete-rows-in-a-data-frame <br>
+https://www.r-bloggers.com/identify-describe-plot-and-remove-the-outliers-from-the-dataset/ <br>
+https://stackoverflow.com/questions/22075592/creating-category-variables-from-numerical-variable-in-r <br>
+https://www.rdocumentation.org/packages/GGally/versions/1.3.2/topics/ggcorr <br>
+https://stackoverflow.com/questions/24651464/how-to-plot-several-regression-lines-in-same-scatter-plot-in-r <br>
+http://www.statmethods.net/management/subset.html <br>
+https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html <br>
+
+<br>
+

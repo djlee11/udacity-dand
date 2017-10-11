@@ -1,3 +1,3 @@
 <h1>p3: Investigate a Dataset</h1>
 
-Investigated the Titanic dataset using NumPy and Panda going through the entire data analysis process.
+This project is from the [Intro to Data Analysis](https://www.udacity.com/course/intro-to-data-analysis--ud170) course. Investigated the Titanic dataset using NumPy and Panda and going through the data analysis process.

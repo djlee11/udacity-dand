@@ -6,7 +6,7 @@
 This repository contains projects to complete the Udacity's Data Analyst Nanodegree program.
 <br>
 
-<h3>Projects</h3>
+<h2>Projects</h2>
 
 <li type='square'>
 	<b> p1: Analyze Bay Area Bike Share Data </b>
@@ -33,6 +33,6 @@ This repository contains projects to complete the Udacity's Data Analyst Nanodeg
 </li>
 
 <br>
-<b>*Note</b>
+<h3>*Note</h3>
 <br>
 During the time this course has been taken, the structure of the program has been modified. 

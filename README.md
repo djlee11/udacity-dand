@@ -27,7 +27,11 @@ This repository contains projects to complete the Udacity's Data Analyst Nanodeg
 </li>
 
 <li type='square'>
-	<b> p7: Create a Tableau Story</b>
+	<b> p7: Identify Fraud from Enron Email </b>
+</li>
+
+<li type='square'>
+	<b> p8: Create a Tableau Story </b>
 </li>
 
 <br>

@@ -34,5 +34,4 @@ This repository contains projects to complete the Udacity's Data Analyst Nanodeg
 
 <br>
 <h3>*Note</h3>
-<br>
 During the time this course has been taken, the structure of the program has been modified. 

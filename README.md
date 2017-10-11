@@ -4,8 +4,6 @@
 
 <h2>About</h2>
 This repository contains projects to complete the Udacity's Data Analyst Nanodegree program.
-<br>
-
 <h2>Projects</h2>
 
 <li type='square'>
